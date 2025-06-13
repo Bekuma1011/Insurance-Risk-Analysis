@@ -1,0 +1,116 @@
+# scripts/eda_engine.py
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import os
+
+
+class InsuranceEDA:
+    def __init__(self, data_path: str):
+        self.data_path = data_path
+        self.df = None
+
+    def load_data(self, delimiter: str = ','):
+        print("[INFO] Loading data...")
+        self.df = pd.read_csv(self.data_path, delimiter=delimiter)
+        print("[INFO] Data loaded successfully with shape:", self.df.shape)
+
+    def data_summary(self):
+        print("\n[SUMMARY] Descriptive statistics:")
+        print(self.df.describe(include='all'))
+        print("\n[SUMMARY] Data types:")
+        print(self.df.dtypes)
+
+    def check_missing_values(self):
+        print("\n[CHECK] Missing values:")
+        missing = self.df.isnull().sum()
+        print(missing[missing > 0])
+
+    def univariate_analysis(self, output_dir="plots/univariate"):
+        os.makedirs(output_dir, exist_ok=True)
+        print("\n[PLOT] Univariate analysis...")
+
+        # Numerical variables
+        numeric_cols = self.df.select_dtypes(include='number').columns
+        for col in numeric_cols:
+            plt.figure(figsize=(6, 4))
+            sns.histplot(self.df[col].dropna(), kde=True)
+            plt.title(f'Distribution of {col}')
+            plt.savefig(f'{output_dir}/{col}_hist.png')
+            plt.close()
+
+        # Categorical variables
+        cat_cols = self.df.select_dtypes(include='object').columns
+        for col in cat_cols:
+            plt.figure(figsize=(6, 4))
+            self.df[col].value_counts().plot(kind='bar')
+            plt.title(f'Count of {col}')
+            plt.ylabel("Frequency")
+            plt.savefig(f'{output_dir}/{col}_bar.png')
+            plt.close()
+
+    def bivariate_analysis(self, output_dir="plots/bivariate"):
+        os.makedirs(output_dir, exist_ok=True)
+        print("\n[PLOT] Bivariate analysis...")
+
+        # Scatter: TotalPremium vs TotalClaims
+        if 'TotalPremium' in self.df.columns and 'TotalClaims' in self.df.columns:
+            plt.figure(figsize=(6, 4))
+            sns.scatterplot(data=self.df, x='TotalPremium', y='TotalClaims')
+            plt.title('TotalPremium vs TotalClaims')
+            plt.savefig(f'{output_dir}/premium_vs_claims.png')
+            plt.close()
+
+        # Correlation matrix
+        plt.figure(figsize=(10, 8))
+        corr = self.df.corr(numeric_only=True)
+        sns.heatmap(corr, annot=True, cmap='coolwarm', fmt='.2f')
+        plt.title('Correlation Matrix')
+        plt.savefig(f'{output_dir}/correlation_matrix.png')
+        plt.close()
+
+    def loss_ratio_analysis(self, group_by_cols=["Province", "Gender"], output_dir="plots/loss_ratio"):
+        os.makedirs(output_dir, exist_ok=True)
+        if "TotalPremium" in self.df.columns and "TotalClaims" in self.df.columns:
+            self.df["LossRatio"] = self.df["TotalClaims"] / self.df["TotalPremium"]
+            print("\n[ANALYSIS] Loss ratio by", group_by_cols)
+            grouped = self.df.groupby(group_by_cols)["LossRatio"].mean().reset_index()
+            print(grouped)
+
+            plt.figure(figsize=(10, 6))
+            sns.barplot(data=grouped, x=group_by_cols[0], y="LossRatio", hue=group_by_cols[1])
+            plt.title("Average Loss Ratio")
+            plt.savefig(f'{output_dir}/loss_ratio_by_{group_by_cols[0]}_{group_by_cols[1]}.png')
+            plt.close()
+
+    def time_trend_analysis(self, output_dir="plots/time_trend"):
+        os.makedirs(output_dir, exist_ok=True)
+        if "TransactionMonth" in self.df.columns:
+            self.df["TransactionMonth"] = pd.to_datetime(self.df["TransactionMonth"], errors='coerce')
+            monthly = self.df.groupby(self.df["TransactionMonth"].dt.to_period("M"))[
+                ["TotalPremium", "TotalClaims"]
+            ].sum().reset_index()
+            monthly["TransactionMonth"] = monthly["TransactionMonth"].astype(str)
+
+            monthly.plot(x="TransactionMonth", y=["TotalPremium", "TotalClaims"], figsize=(10, 6))
+            plt.title("Monthly Premium and Claims Trend")
+            plt.xticks(rotation=45)
+            plt.tight_layout()
+            plt.savefig(f'{output_dir}/monthly_trend.png')
+            plt.close()
+
+    def detect_outliers(self, columns=None, output_dir="plots/outliers"):
+        os.makedirs(output_dir, exist_ok=True)
+        print("\n[PLOT] Outlier detection...")
+
+        if not columns:
+            columns = self.df.select_dtypes(include='number').columns
+
+        for col in columns:
+            plt.figure(figsize=(6, 4))
+            sns.boxplot(data=self.df, x=col)
+            plt.title(f'Outliers in {col}')
+            plt.savefig(f'{output_dir}/{col}_boxplot.png')
+            plt.close()
+
+
